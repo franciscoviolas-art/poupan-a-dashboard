@@ -32,6 +32,7 @@ body{background:var(--bg);color:var(--text);font-family:'Figtree',sans-serif;fon
 .kpi-grid-2{grid-template-columns:1fr 1fr;}
 .kpi-grid-3{grid-template-columns:repeat(3,minmax(0,1fr));}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;}
+.grid-1{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:10px;}
 .kpi{background:var(--surface2);border-radius:var(--r);padding:.85rem .9rem;}
 .kpi-label{font-size:10px;color:var(--text2);margin-bottom:4px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;}
 .kpi-value{font-size:18px;font-weight:600;color:var(--text);letter-spacing:-.5px;}
@@ -222,7 +223,7 @@ body{background:var(--bg);color:var(--text);font-family:'Figtree',sans-serif;fon
       <div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.85rem;"><div class="card-title" style="margin-bottom:0;">Encaixes previstos</div><div style="font-size:10px;color:var(--text3);"><span id="proj-despesa-label">—</span>/mês</div></div><div id="projecao-content"></div></div>
       <div class="section-divider"><div class="section-divider-line"></div><div class="section-divider-label">Poupanças dos filhos</div><div class="section-divider-line"></div></div>
       <div class="kpi-grid kpi-grid-3" id="kpis-filhos" style="margin-bottom:10px;"></div>
-      <div class="grid-2" style="margin-bottom:0;">
+      <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:0;">
         <div class="child-card"><div class="child-header"><div class="child-avatar" style="background:var(--blue-bg);color:var(--blue);">F</div><div><div class="child-name">Poupança F</div><div class="child-bank">Activo</div></div></div><div class="child-amount" id="child-f-amount">—</div><div class="child-sub">saldo atual</div><div style="position:relative;width:100%;height:70px;"><canvas id="chartFilhoF"></canvas></div></div>
         <div class="child-card"><div class="child-header"><div class="child-avatar" style="background:var(--pink-bg);color:var(--pink);">MC</div><div><div class="child-name">Poupança MC</div><div class="child-bank">Activo</div></div></div><div class="child-amount" id="child-mc-amount">—</div><div class="child-sub">saldo atual</div><div style="position:relative;width:100%;height:70px;"><canvas id="chartFilhoMC"></canvas></div></div>
       </div>
@@ -318,10 +319,35 @@ const ETF_COLORS={VWCE:'#BA7517',QDVJ:'#185FA5',IUSN:'#0F6E56'};
 let accessToken=null,snapshots=[],tranches=[],charts={},currentTab='overview';
 
 function handleAuthClick(){
-  const p=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:window.location.href.split('?')[0].split('#')[0],response_type:'token',scope:SCOPES,include_granted_scopes:'true'});
-  window.location.href='https://accounts.google.com/o/oauth2/v2/auth?'+p;
+  const redirectUri=window.location.href.split('?')[0].split('#')[0];
+  const p=new URLSearchParams({client_id:CLIENT_ID,redirect_uri:redirectUri,response_type:'token',scope:SCOPES,include_granted_scopes:'true'});
+  const authUrl='https://accounts.google.com/o/oauth2/v2/auth?'+p;
+  // Try popup first (works in Chrome), fallback to redirect
+  const popup=window.open(authUrl,'oauth2','width=500,height=600,scrollbars=yes');
+  if(!popup||popup.closed){
+    // Popup blocked — use redirect
+    window.location.href=authUrl;
+    return;
+  }
+  // Poll popup for token
+  const timer=setInterval(()=>{
+    try{
+      const popupUrl=popup.location.href;
+      if(popupUrl.includes('access_token')){
+        const hash=popup.location.hash.substring(1);
+        const params=new URLSearchParams(hash);
+        accessToken=params.get('access_token');
+        sessionStorage.setItem('gtoken',accessToken);
+        popup.close();
+        clearInterval(timer);
+        showDashboard();
+      }
+      if(popup.closed){clearInterval(timer);}
+    }catch(e){/* cross-origin, keep polling */}
+  },500);
 }
 function checkAuth(){
+  // Check if we came back from redirect auth
   const hash=window.location.hash.substring(1);
   const p=new URLSearchParams(hash);
   if(p.get('access_token')){
