@@ -51,7 +51,7 @@ body{background:var(--bg);color:var(--text);font-family:'Figtree',sans-serif;fon
 .acc-bar-wrap{flex:1;height:3px;background:var(--surface2);border-radius:2px;overflow:hidden;}
 .acc-bar{height:100%;border-radius:2px;}
 .acc-val{font-size:12px;font-weight:500;color:var(--text);width:60px;text-align:right;flex-shrink:0;}
-.acc-delta{font-size:10px;width:52px;text-align:right;flex-shrink:0;font-weight:600;}
+.acc-delta{font-size:10px;width:80px;text-align:right;flex-shrink:0;font-weight:600;}
 .acc-delta.pos{color:var(--green);}
 .acc-delta.neg{color:var(--red);}
 .acc-delta.neutral{color:var(--text3);}
@@ -304,10 +304,29 @@ body{background:var(--bg);color:var(--text);font-family:'Figtree',sans-serif;fon
     <div style="display:flex;flex-direction:column;gap:10px;padding-top:.5rem;">
       <button class="btn btn-ghost" style="width:100%;padding:12px;font-size:14px;text-align:left;" onclick="closeFab();openModal()">📅 Registar snapshot</button>
       <button class="btn btn-ghost" style="width:100%;padding:12px;font-size:14px;text-align:left;" onclick="closeFab();openTrancheModal()">📈 Adicionar tranche ETF</button>
+      <button class="btn btn-ghost" style="width:100%;padding:12px;font-size:14px;text-align:left;" onclick="closeFab();openEncaixeModal()">💸 Registar encaixe previsto</button>
     </div>
   </div>
 </div>
 
+
+<div class="modal-overlay" id="modal-encaixe" onclick="if(event.target===this)closeEncaixeModal()">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Encaixe previsto</div>
+    <div class="modal-sub">Regista uma entrada ou saída prevista</div>
+    <div class="form-grid">
+      <div class="form-group"><label class="form-label">Data</label><input class="form-input" type="date" id="e-data"></div>
+      <div class="form-group"><label class="form-label">Tipo</label><select class="form-input" id="e-tipo"><option value="in">Entrada 💚</option><option value="out">Saída 🔴</option></select></div>
+      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Descrição</label><input class="form-input" type="text" id="e-desc" placeholder="ex: IRS, Salário, Renda..."></div>
+      <div class="form-group" style="grid-column:1/-1;"><label class="form-label">Valor (€)</label><input class="form-input" type="number" id="e-val" placeholder="0" inputmode="decimal" step="0.01"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeEncaixeModal()">Cancelar</button>
+      <button class="btn btn-solid" id="btn-save-encaixe" onclick="saveEncaixe()">Guardar</button>
+    </div>
+  </div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -316,7 +335,7 @@ const CLIENT_ID='538922492472-9149miorvri3qpgnhbl2jdhqprr5qng1.apps.googleuserco
 const SHEET_ID='1-BQvCVIMljnE7CoKu9A0dNNBI6izYo-ai8i3EtCmXt8';
 const SCOPES='https://www.googleapis.com/auth/spreadsheets';
 const ETF_COLORS={VWCE:'#BA7517',QDVJ:'#185FA5',IUSN:'#0F6E56'};
-let accessToken=null,snapshots=[],tranches=[],charts={},currentTab='overview';
+let accessToken=null,snapshots=[],tranches=[],encaixes=[],charts={},currentTab='overview';
 
 function handleAuthClick(){
   const redirectUri=window.location.href.split('?')[0].split('#')[0];
@@ -398,6 +417,8 @@ async function ensureHeaders(){
   if(!s.length||!s[0].length)await sheetsAppend('Snapshots!A1',[['data','despesa','moey','vwce','qdvj','iusn','reforma','f','mc','total_pessoal','total_filhos']]);
   const t=await sheetsGet('Tranches!A1:G1');
   if(!t.length||!t[0].length)await sheetsAppend('Tranches!A1',[['id','etf','data','qty','preco','atual','notas']]);
+  const e=await sheetsGet('Encaixes!A1:E1');
+  if(!e.length||!e[0].length)await sheetsAppend('Encaixes!A1',[['id','data','tipo','desc','val']]);
 }
 
 async function syncData(){
@@ -433,6 +454,19 @@ async function syncData(){
     document.getElementById('dashboard').style.display='block';
     document.getElementById('fab').classList.add('visible');
     renderAll();
+    // Parse encaixes
+    const eRows=await sheetsGet('Encaixes!A:E');
+    encaixes=[];
+    if(eRows.length>1){
+      const hdrs=eRows[0];
+      for(let i=1;i<eRows.length;i++){
+        const r=eRows[i];if(!r[0])continue;
+        const obj={};hdrs.forEach((h,j)=>obj[h]=r[j]||'');
+        obj.val=parseFloat(obj.val)||0;obj._row=i+1;
+        encaixes.push(obj);
+      }
+      encaixes.sort((a,b)=>new Date(a.data)-new Date(b.data));
+    }
     if(currentTab==='analise')renderAnalise();
     if(currentTab==='historico')renderHistorico();
     if(currentTab==='tranches')renderTranches();
@@ -586,7 +620,9 @@ function renderAll(){
     const delta=a.prev!==null?a.val-a.prev:null;
     const dStr=delta!==null?(delta>=0?'+':'')+fmt(delta):'—';
     const dClass=delta!==null?(delta>0?'pos':delta<0?'neg':'neutral'):'neutral';
-    return `<div class="acc-item"><div class="acc-dot" style="background:${a.color}"></div><div class="acc-info"><div class="acc-name">${a.name}</div><div class="acc-type">${a.sub}</div></div><div class="acc-bar-wrap"><div class="acc-bar" style="width:${p}%;background:${a.color}"></div></div><div class="acc-val">${fmt(a.val)}</div><div class="acc-delta ${dClass}">${dStr}</div></div>`;
+    const pctDelta=delta!==null&&a.prev>0?(delta/a.prev)*100:null;
+    const pStr=pctDelta!==null?' ('+(pctDelta>=0?'+':'')+pctDelta.toFixed(1)+'%)':'';
+    return `<div class="acc-item"><div class="acc-dot" style="background:${a.color}"></div><div class="acc-info"><div class="acc-name">${a.name}</div><div class="acc-type">${a.sub}</div></div><div class="acc-bar-wrap"><div class="acc-bar" style="width:${p}%;background:${a.color}"></div></div><div class="acc-val">${fmt(a.val)}</div><div class="acc-delta ${dClass}">${dStr}${pStr}</div></div>`;
   }).join('');
   const etfs=[{ticker:'VWCE',desc:'Vanguard All-World',val:latest.vwce||0},{ticker:'QDVJ',desc:'iShares Global Agg Bond',val:latest.qdvj||0},{ticker:'IUSN',desc:'iShares Small Cap',val:latest.iusn||0}];
   const etfTot=etfs.reduce((s,e)=>s+e.val,0);
@@ -613,17 +649,44 @@ function renderAll(){
 }
 
 function renderProjecao(c,despesa){
-  const enc={'Abr':[{tipo:'in',desc:'IRS',val:6900},{tipo:'in',desc:'Bilhética',val:1491},{tipo:'out',desc:'Sr. Arnaldo',val:2500}],'Mai':[],'Jun':[],'Jul':[{tipo:'in',desc:'Bilhética',val:267}],'Ago':[],'Set':[{tipo:'in',desc:'Recebimento',val:2937.06}]};
-  document.getElementById('proj-despesa-label').textContent=fmt(despesa);
-  let pool=c.totalPessoal;const maxPool=pool+11595.06;
-  document.getElementById('projecao-content').innerHTML=Object.keys(enc).map(mes=>{
-    const movs=enc[mes];
-    const tIn=movs.filter(m=>m.tipo==='in').reduce((s,m)=>s+m.val,0);
-    const tOut=movs.filter(m=>m.tipo==='out').reduce((s,m)=>s+m.val,0);
-    pool=pool+tIn-tOut-despesa;
-    const bp=Math.min(Math.round((pool/maxPool)*100),100);
-    return `<div class="teso-row"><div class="teso-mes">${mes}</div><div class="teso-movs">${tIn>0?`<span class="teso-mov-in">+${fmt(tIn)} ${movs.filter(m=>m.tipo==='in').map(m=>m.desc).join(', ')}</span>`:''} ${tOut>0?`<span class="teso-mov-out">−${fmt(tOut)} ${movs.filter(m=>m.tipo==='out').map(m=>m.desc).join(', ')}</span>`:''}<span class="teso-mov-desp">−${fmt(despesa)} despesas</span></div><div class="teso-saldo-wrap"><div class="teso-saldo">${fmt(pool)}</div><div class="teso-bar"><div class="teso-bar-fill" style="width:${bp}%"></div></div></div></div>`;
+  document.getElementById('proj-despesa-label').textContent=fmt(2000);
+  if(!encaixes||!encaixes.length){
+    document.getElementById('projecao-content').innerHTML='<div class="empty-state"><div class="empty-state-icon">📅</div><div class="empty-state-text">Sem encaixes registados.<br>Carrega no + para adicionar.</div></div>';
+    return;
+  }
+  // Build timeline: today onwards
+  const today=new Date();today.setHours(0,0,0,0);
+  // Generate monthly 2000€ deductions on day 28 from today up to last encaixe
+  const lastEnc=encaixes.reduce((m,e)=>new Date(e.data)>m?new Date(e.data):m,today);
+  const autoMovs=[];
+  let d=new Date(today.getFullYear(),today.getMonth(),28);
+  if(d<today)d=new Date(today.getFullYear(),today.getMonth()+1,28);
+  while(d<=lastEnc){
+    autoMovs.push({data:d.toISOString().split('T')[0],tipo:'out',desc:'Despesas familiares',val:2000,auto:true});
+    d=new Date(d.getFullYear(),d.getMonth()+1,28);
+  }
+  // Merge and sort all movements
+  const allMovs=[...encaixes.filter(e=>{const ed=new Date(e.data);ed.setHours(0,0,0,0);return ed>=today;}),...autoMovs].sort((a,b)=>new Date(a.data)-new Date(b.data));
+  if(!allMovs.length){
+    document.getElementById('projecao-content').innerHTML='<div class="empty-state"><div class="empty-state-icon">✅</div><div class="empty-state-text">Sem movimentos futuros registados.</div></div>';
+    return;
+  }
+  let pool=c.totalPessoal;
+  const maxPool=Math.max(pool,...allMovs.filter(m=>m.tipo==='in').map(m=>pool+m.val));
+  const rows=allMovs.map(m=>{
+    const isIn=m.tipo==='in';
+    pool=pool+(isIn?m.val:-m.val);
+    const bp=Math.max(0,Math.min(Math.round((pool/maxPool)*100),100));
+    const badge=m.auto?'<span style="font-size:9px;background:var(--surface2);color:var(--text3);padding:1px 5px;border-radius:4px;margin-left:4px;">auto</span>':'';
+    return `<div class="teso-row">
+      <div class="teso-mes">${fmtDateShort(m.data)}</div>
+      <div class="teso-movs">
+        <span class="${isIn?'teso-mov-in':'teso-mov-out'}">${isIn?'+':'−'}${fmt(m.val)} ${m.desc}${badge}</span>
+      </div>
+      <div class="teso-saldo-wrap"><div class="teso-saldo" style="color:${pool>=0?'var(--text)':'var(--red)'};">${fmt(pool)}</div><div class="teso-bar"><div class="teso-bar-fill" style="width:${bp}%;background:${pool>=0?'var(--green-mid)':'var(--red)'}"></div></div></div>
+    </div>`;
   }).join('');
+  document.getElementById('projecao-content').innerHTML=rows;
 }
 
 function renderAnalise(){
@@ -690,6 +753,30 @@ function renderHistorico(){
   }).join('');
 }
 
+
+async function saveEncaixe(){
+  const btn=document.getElementById('btn-save-encaixe');btn.textContent='A guardar…';btn.disabled=true;
+  const data=document.getElementById('e-data').value;
+  const tipo=document.getElementById('e-tipo').value;
+  const desc=document.getElementById('e-desc').value;
+  const val=parseFloat(document.getElementById('e-val').value)||0;
+  if(!data||!desc||!val){showToast('Preenche todos os campos');btn.textContent='Guardar';btn.disabled=false;return;}
+  try{
+    await sheetsAppend('Encaixes!A:E',[[Date.now(),data,tipo,desc,val]]);
+    await syncData();closeEncaixeModal();showToast('Encaixe guardado ✓');
+  }catch(e){showToast('Erro ao guardar.');}
+  btn.textContent='Guardar';btn.disabled=false;
+}
+async function deleteEncaixe(row){
+  if(!confirm('Eliminar este encaixe?'))return;
+  try{await sheetsUpdate(`Encaixes!A${row}:E${row}`,[['','','','','']]);await syncData();showToast('Encaixe eliminado');}catch(e){showToast('Erro.');}
+}
+function openEncaixeModal(){
+  document.getElementById('e-data').value=new Date().toISOString().split('T')[0];
+  document.getElementById('e-desc').value='';document.getElementById('e-val').value='';
+  document.getElementById('modal-encaixe').classList.add('open');
+}
+function closeEncaixeModal(){document.getElementById('modal-encaixe').classList.remove('open');}
 ['t-qty','t-preco','t-atual'].forEach(id=>{document.getElementById(id).addEventListener('input',updateTranchePreview);});
 checkAuth();
 </script>
