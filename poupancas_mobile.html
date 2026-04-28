@@ -51,7 +51,7 @@ body{background:var(--bg);color:var(--text);font-family:'Figtree',sans-serif;fon
 .acc-bar-wrap{flex:1;height:3px;background:var(--surface2);border-radius:2px;overflow:hidden;}
 .acc-bar{height:100%;border-radius:2px;}
 .acc-val{font-size:12px;font-weight:500;color:var(--text);width:60px;text-align:right;flex-shrink:0;}
-.acc-delta{font-size:10px;width:80px;text-align:right;flex-shrink:0;font-weight:600;}
+.acc-delta{font-size:10px;width:80px;text-align:right;flex-shrink:0;font-weight:600;display:flex;flex-direction:column;align-items:flex-end;line-height:1.3;}
 .acc-delta.pos{color:var(--green);}
 .acc-delta.neg{color:var(--red);}
 .acc-delta.neutral{color:var(--text3);}
@@ -686,7 +686,8 @@ function renderProjecao(c,despesa){
     return `<div class="teso-row">
       <div class="teso-mes">${fmtDateShort(m.data)}</div>
       <div class="teso-movs">
-        <span class="${isIn?'teso-mov-in':'teso-mov-out'}">${isIn?'+':'−'}${fmt(m.val)} ${m.desc}${badge}</span>
+        <span class="${isIn?'teso-mov-in':'teso-mov-out'}">${isIn?'+':'−'}${fmt(m.val)}${badge}</span>
+        <span class="teso-mov-desp">${m.desc}</span>
       </div>
       <div class="teso-saldo-wrap"><div class="teso-saldo" style="color:${pool>=0?'var(--text)':'var(--red)'};">${fmt(pool)}</div><div class="teso-bar"><div class="teso-bar-fill" style="width:${bp}%;background:${pool>=0?'var(--green-mid)':'var(--red)'}"></div></div></div>
     </div>`;
